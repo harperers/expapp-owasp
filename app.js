@@ -2,11 +2,15 @@ const express               =  require('express'),
       expSession            =  require("express-session"),
       app                   =  express(),
       mongoose              =  require("mongoose"),
+      mongoSanitize         =  require('express-mongo-sanitize'),
       passport              =  require("passport"),
       bodyParser            =  require("body-parser"),
       LocalStrategy         =  require("passport-local"),
       passportLocalMongoose =  require("passport-local-mongoose"),
-      User                  =  require("./models/user")
+      User                  =  require("./models/user"),
+      rateLimit             =  require('express-rate-limit'),
+      xss                   =  require('xss-clean'),
+      helmet                =  require('helmet')
 
 //Connecting database
 mongoose.connect("mongodb://localhost/auth_demo");
@@ -14,7 +18,12 @@ mongoose.connect("mongodb://localhost/auth_demo");
 app.use(expSession({
     secret:"mysecret",       //decode or encode session
     resave: false,          
-    saveUninitialized:false
+    saveUninitialized:true,
+    cookie: {
+        httpOnly: true,
+        secure: true,
+        maxAge: 1 * 60 * 1000 // 10 minutes
+    }
 }))
 
 passport.serializeUser(User.serializeUser());       //session encoding
@@ -32,8 +41,25 @@ app.use(express.static("public"));
 //=======================
 //      O W A S P
 //=======================
+// Data Sanitization against NoSQL Injection Attacks
+app.use(mongoSanitize());
 
+// Prevent Brute Force & DOS Attacks - Rate Limiting
+const limit = rateLimit({
+    max: 100,
+    windowMS: 60 * 60 * 1000, // 1 Hour of 'ban' / lockout
+    message: 'Too many requests' // message to se nd
+});
+app.use('/routeName', limit); // Setting limter on specific route
 
+// Preventing DOS Attacks - Body Parser
+app.use(express.json({ limit: '10kb' })); // Body limit is 10
+
+// Data Sanitization against XSS attacks
+app.use(xss());
+
+// Helmet to securet connetion and data
+app.use(helmet());
 
 //=======================
 //      R O U T E S
